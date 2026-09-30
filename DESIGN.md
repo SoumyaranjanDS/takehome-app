@@ -10,11 +10,11 @@ The PadosiPro application follows a decoupled Client-Server model. It consists o
 
 ```mermaid
 graph TD
-    Client[React Native App\n(iOS / Android)] -->|HTTPS / REST| Node[Node.js + Express API]
+    Client["React Native App<br/>(iOS / Android)"] -->|"HTTPS / REST"| Node["Node.js + Express API"]
     
     subgraph Backend Infrastructure
-        Node -->|pg driver| DB[(PostgreSQL Database)]
-        Node -->|nodemailer| SMTP[SMTP Email Service\nGmail/Ethereal]
+        Node -->|"pg driver"| DB[("PostgreSQL Database")]
+        Node -->|"nodemailer"| SMTP["SMTP Email Service<br/>Gmail/Ethereal"]
     end
 
     classDef client fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
