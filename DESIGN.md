@@ -1,137 +1,45 @@
-# PadosiPro - Architecture & Design
+# System Design
 
-This document outlines the system architecture, data models, design decisions, and future roadmap for the PadosiPro platform. 
+## Architecture
 
----
+The application adopts a standard two-tier architecture tailored for mobile-first experiences.
+- **Frontend (Mobile App):** Built using React Native bare workflow, utilizing React Navigation for routing and Context API for global state management (Authentication and Onboarding flows). The UI follows a strict SaaS-inspired design language with custom reusable components.
+- **Backend API:** A Node.js and Express.js REST API using PostgreSQL as the persistent data store. It serves as the single source of truth for user accounts, profiles, and task catalogue selections.
 
-## 1. High-Level Architecture
+**Key Libraries:**
+- **Frontend:** `react-navigation` (navigation stack control based on app state), `axios` (API requests), `react-native-safe-area-context` (handling notches and modern displays).
+- **Backend:** `pg` (direct SQL querying without ORM overhead), `bcrypt` (password and OTP hashing), `jsonwebtoken` (stateless authentication), `nodemailer` (SMTP email integration).
 
-The PadosiPro application follows a decoupled Client-Server model. It consists of a React Native mobile application communicating with a monolithic Node.js/Express backend, backed by a PostgreSQL relational database.
+## Main Trade-offs
 
-```mermaid
-graph TD
-    Client["React Native App<br/>(iOS / Android)"] -->|"HTTPS / REST"| Node["Node.js + Express API"]
-    
-    subgraph Backend Infrastructure
-        Node -->|"pg driver"| DB[("PostgreSQL Database")]
-        Node -->|"nodemailer"| SMTP["SMTP Email Service<br/>Gmail/Ethereal"]
-    end
+1. **Context API vs. Redux/Zustand:**
+   - *Trade-off:* Context API was used instead of a heavier state management library like Redux.
+   - *Reasoning:* The current state requirements are relatively simple (authentication token, setup completion flags). Redux would add unnecessary boilerplate for this scale.
 
-    classDef client fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#000;
-    classDef server fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000;
-    classDef db fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#000;
-    
-    class Client client;
-    class Node server;
-    class DB db;
-    class SMTP server;
-```
+2. **Raw SQL (`pg`) vs. ORM (Prisma/Sequelize):**
+   - *Trade-off:* Direct parameterized queries were used over an ORM.
+   - *Reasoning:* Ensures absolute transparency and fine-grained control over the database schema and query performance, though it sacrifices some type safety and developer speed compared to an ORM like Prisma.
 
----
+3. **Stateless JWT vs. Stateful Sessions:**
+   - *Trade-off:* JWTs were chosen for authentication.
+   - *Reasoning:* JWTs reduce database round-trips for route authorization, which is ideal for mobile apps facing intermittent connectivity. However, revoking JWTs before expiry is harder than destroying a session.
 
-## 2. Authentication Flow
+4. **OTP Hashing:**
+   - *Trade-off:* OTPs are stored as bcrypt hashes in the database.
+   - *Reasoning:* While OTPs are short-lived, hashing them ensures they cannot be read by an attacker with database access. The trade-off is the CPU cost of bcrypt hashing/comparing on verification, which is negligible for OTPs.
 
-Authentication is strictly JWT-based and stateless. To ensure high security and prevent bot signups, the application enforces a strict OTP-based email verification flow before issuing a session token.
+## What Was Left Out
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant App as React Native App
-    participant API as Express API
-    participant Mail as SMTP Service
-    participant DB as PostgreSQL
-    
-    User->>App: Submits Email & Password
-    App->>API: POST /auth/register
-    API->>DB: Store hashed password (bcrypt)
-    API->>DB: Generate & store hashed OTP
-    API->>Mail: Send plain OTP
-    Mail-->>User: Delivers 6-digit code
-    API-->>App: Registration successful
-    
-    User->>App: Enters OTP
-    App->>API: POST /auth/verify-otp
-    API->>DB: Verify OTP hash, expiry & attempts
-    API->>DB: Mark user as verified
-    API-->>App: Verification success
-    
-    User->>App: Clicks Login
-    App->>API: POST /auth/login
-    API->>DB: Validate credentials & verify status
-    API-->>App: Return JWT Token
-```
+- **Redux / Complex State Management:** Deferred due to scope constraints; Context API was sufficient.
+- **Comprehensive E2E Testing:** We implemented unit tests for risky backend logic (auth/OTP), but mobile end-to-end testing (e.g., Detox or Appium) was excluded.
+- **Offline Mode Persistence:** The app heavily relies on network calls. Local caching of tasks or profile data using MMKV or SQLite wasn't implemented.
+- **Social Login:** OAuth integrations (Google/Apple) were omitted to focus on the core email/OTP flow.
+- **Refresh Tokens:** The login flow provides a single JWT. A dual-token architecture (short-lived access token + long-lived refresh token) would be more secure.
 
----
+## Next Steps (If given another week)
 
-## 3. Database Schema (ERD)
-
-A relational model was chosen because the platform relies on strict data integrity (e.g., a user's selected tasks must reference valid catalog tasks).
-
-```mermaid
-erDiagram
-    USERS ||--o{ USER_PROFILES : "has one"
-    USERS ||--o{ OTP_CODES : "generates"
-    USERS ||--o{ USER_TASKS : "selects"
-    CATEGORIES ||--o{ TASKS : "contains"
-    TASKS ||--o{ USER_TASKS : "assigned to"
-
-    USERS {
-        int id PK
-        varchar email UK
-        varchar password_hash
-        boolean is_verified
-        timestamp created_at
-    }
-    
-    USER_PROFILES {
-        int user_id PK, FK
-        varchar name
-        varchar mobile_number
-        text address
-        varchar business_name
-    }
-
-    TASKS {
-        int id PK
-        int category_id FK
-        varchar name
-        text description
-    }
-```
-
----
-
-## 4. Main Trade-offs & Decisions
-
-1. **Raw SQL (`pg`) vs. ORM (Prisma/TypeORM)**
-   - **Decision**: Implemented raw SQL queries using the native `pg` driver.
-   - **Trade-off**: Writing raw SQL lacks the automatic type-safety and intellisense provided by modern ORMs like Prisma. However, it completely eliminates abstraction overhead, reduces the build footprint, and provides exact, surgical control over complex queries (like `INSERT ... ON CONFLICT`).
-
-2. **React Context API vs. Global Stores (Redux/Zustand)**
-   - **Decision**: Leveraged React's built-in Context API for global state.
-   - **Trade-off**: The Context API can trigger unnecessary re-renders in deeply nested trees if not memoized properly. Because the app's global state is currently restricted purely to user authentication (`userToken`, `hasProfile`), pulling in Redux would have added unnecessary boilerplate without providing immediate value.
-
-3. **Cloud Postgres (Neon) vs. Local Docker Dependency**
-   - **Decision**: Defaulted to a serverless Postgres instance for active development.
-   - **Trade-off**: While a `docker-compose.yml` is provided for strict local setups, relying on a cloud database removes local environment friction (like OS-specific Docker networking issues) and drastically speeds up testing and onboarding.
-
----
-
-## 5. What Was Left Out
-
-Given the timeframe of the assignment, the following production-grade features were purposefully omitted to focus on core functionality:
-
-- **Rate Limiting**: While OTP attempts are tracked and restricted in the database (max 5), there is no IP-based rate limiting middleware (e.g., `express-rate-limit`) to prevent DDoS attacks on the `/register` endpoint.
-- **Refresh Tokens**: The application currently uses a single long-lived JWT. A highly secure architecture would utilize short-lived access tokens alongside HTTP-only refresh tokens.
-- **Offline Caching**: The application assumes a persistent network connection. User profiles and selected tasks are not aggressively cached in `AsyncStorage` for offline viewing.
-
----
-
-## 6. What I Would Do Next (With Another Week)
-
-If allocated another sprint to mature the application, the roadmap would prioritize:
-
-1. **Robust Caching Layer (Redis)**: Transition OTP storage from PostgreSQL to Redis. OTPs are highly transient data with strict expiry times; Redis TTL (Time To Live) is perfectly suited for this and removes unnecessary write-load from the primary Postgres instance.
-2. **CI/CD Pipelines**: Implement **GitHub Actions** and Fastlane to automate linting, unit testing, and deployment to TestFlight and Google Play internal testing tracks.
-3. **Automated E2E Testing**: Introduce **Detox** to run automated End-to-End user flows on iOS/Android emulators, ensuring that the full registration, OTP, and task selection flows never regress during updates.
-4. **Enhanced UI Micro-interactions**: Integrate `react-native-reanimated` to implement 60fps, physics-based micro-interactions across the UI (e.g., fluid layout transitions on the Task Selection screen) to elevate the premium feel of the app.
+1. **Implement Refresh Tokens:** Upgrade the authentication system to use short-lived access tokens and secure refresh tokens to enhance security and allow seamless session resumption.
+2. **Offline Support:** Introduce a local caching layer (e.g., React Native MMKV) to persist the task catalogue and user profile locally, ensuring the home screen loads instantly and gracefully handles network failures.
+3. **End-to-End Testing:** Set up a Detox testing suite for the React Native app to automatically simulate user interactions (registration, OTP verification, task selection) across iOS and Android emulators.
+4. **CI/CD Pipeline:** Create GitHub Actions workflows to automatically run the backend Vitest suite, lint the React Native codebase, and optionally trigger Fastlane for automated TestFlight and Play Store distribution.
+5. **Business Name Requirement:** Add logic to handle the "Business Name" as an optional field depending on the user's role or plan tier, keeping the consumer flow minimal.
