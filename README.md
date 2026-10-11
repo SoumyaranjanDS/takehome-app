@@ -1,4 +1,4 @@
-# PadosiPro - Full-Stack Developer Assignment
+# PadosiPro - Full-Stack App (React Native)
 
 This repository contains the complete implementation of the PadosiPro Take-Home Assignment, featuring a React Native mobile application and a Node.js/PostgreSQL backend API.
 
