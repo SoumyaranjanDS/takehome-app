@@ -36,7 +36,7 @@ The application adopts a standard two-tier architecture tailored for mobile-firs
 - **Social Login:** OAuth integrations (Google/Apple) were omitted to focus on the core email/OTP flow.
 - **Refresh Tokens:** The login flow provides a single JWT. A dual-token architecture (short-lived access token + long-lived refresh token) would be more secure.
 
-## Next Steps (If given another week)
+## Next Steps (If given another week) - I will make sure that i make a better app that you
 
 1. **Implement Refresh Tokens:** Upgrade the authentication system to use short-lived access tokens and secure refresh tokens to enhance security and allow seamless session resumption.
 2. **Offline Support:** Introduce a local caching layer (e.g., React Native MMKV) to persist the task catalogue and user profile locally, ensuring the home screen loads instantly and gracefully handles network failures.
